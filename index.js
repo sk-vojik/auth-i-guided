@@ -2,15 +2,29 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const session = require('express-session');
 
 const db = require('./database/dbConfig.js');
 const Users = require('./users/users-module.js');
 
 const server = express();
 
+const sessionConfig = {
+  name: 'monkey',    //cookie name. change it from standard sid(session id)
+  secret: 'keep it secret, keep it safe', //usually would keep this in .env file
+  cookie: {
+    maxAge : 1000 * 60 * 15, //1 second times 60 - 1 minute * 15 = 15 minute session length
+    secure: false, //used only for https or not. would be true after development
+  },
+  httpOnly: true,  //cannot access the cookie from js.
+  resave: false, 
+  saveUnitialized: false, // laws against setting cookies automatically
+};
+
 server.use(helmet());
 server.use(express.json());
 server.use(cors());
+server.use(session(sessionConfig));
 
 server.get('/', (req, res) => {
   res.send("It's alive!");
