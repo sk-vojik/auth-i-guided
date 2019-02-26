@@ -3,6 +3,8 @@ const helmet = require('helmet');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const session = require('express-session');
+const KnexSessionStore = require('connect-session-knex')(session);
+
 
 const db = require('./database/dbConfig.js');
 const Users = require('./users/users-module.js');
@@ -19,6 +21,14 @@ const sessionConfig = {
   httpOnly: true,  //cannot access the cookie from js.
   resave: false, 
   saveUnitialized: false, // laws against setting cookies automatically
+
+  store: new KnexSessionStore({ 
+    knex: db,
+    tablename: 'sessions',    //all lower case
+    sidfieldname: 'sid',
+    createtable: true,
+    clearInterval: 1000 * 60 * 60   //clean it every hour
+  })
 };
 
 server.use(helmet());
@@ -39,6 +49,7 @@ server.post('/api/register', (req, res) => {
 
   Users.add(user)
     .then(saved => {
+      req.session.user = saved;
       res.status(201).json(saved);
     })
     .catch(error => {
@@ -54,6 +65,7 @@ server.post('/api/login', (req, res) => {
     .then(user => {
       // check that passwords match
       if (user && bcrypt.compareSync(password, user.password)) {
+        req.session.user = user;
         res.status(200).json({ message: `Welcome ${user.username}!` });
       } else {
         res.status(401).json({ message: 'Invalid Credentials' });
@@ -64,28 +76,37 @@ server.post('/api/login', (req, res) => {
     });
 });
 
-function restricted (req, res, next) {
-  const { username, password } = req.headers;
 
-  if (username && password) {
-    Users.findBy({ username })
-      .first()
-      .then(user => {
-        // check that passwords match
-        if (user && bcrypt.compareSync(password, user.password)) {
-            next()
-        } else {
-          res.status(401).json({ message: 'Invalid Credentials' });
-        }
-      })
-      .catch(error => {
-        res.status(500).json({ message: 'No creds provided' });
-      });
+function restricted(req, res, next) {
+  if (req.session && req.session.user) {
+    next();
   } else {
-    res.status(400).json({ message: 'No creds provided' });
+    res.status(401).json({ message: 'you shall not pass!' })
   }
-
 }
+
+// function restricted (req, res, next) {
+//   const { username, password } = req.headers;
+
+//   if (username && password) {
+//     Users.findBy({ username })
+//       .first()
+//       .then(user => {
+//         // check that passwords match
+//         if (user && bcrypt.compareSync(password, user.password)) {
+//             next()
+//         } else {
+//           res.status(401).json({ message: 'Invalid Credentials' });
+//         }
+//       })
+//       .catch(error => {
+//         res.status(500).json({ message: 'No creds provided' });
+//       });
+//   } else {
+//     res.status(400).json({ message: 'No creds provided' });
+//   }
+
+// }
 
 // protect this route, only authenticated users should see it
 server.get('/api/users', restricted, (req, res) => {
@@ -104,6 +125,23 @@ server.get('/users', restricted, async (req, res) => {
     res.json(users);
   } catch (error) {
     res.send(err)
+  }
+});
+
+
+//LOGOUT
+
+server.get('/api/logout', (req, res) => {
+  if(req.session) {
+    req.session.destroy(err => {
+      if (err) {
+        res.send('error')
+      } else {
+        res.send('bye, thanks for ocming')
+      }
+    });
+  } else {
+    res.end();
   }
 });
 
